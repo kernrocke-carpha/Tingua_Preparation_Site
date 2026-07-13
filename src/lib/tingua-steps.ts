@@ -1,11 +1,52 @@
-export type StepField = {
-  key: string;
-  label: string;
-  type: "text" | "textarea" | "select" | "number";
-  placeholder?: string;
-  options?: string[];
-  hint?: string;
+export type FileAttachment = {
+  name: string;
+  mime: string;
+  dataUrl: string;
+  size: number;
 };
+
+export type InjectEntry = {
+  id: string;
+  name: string;
+  files: FileAttachment[];
+};
+
+export type RosterEntry = {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+};
+
+export type StepField =
+  | {
+      key: string;
+      label: string;
+      type: "text" | "textarea" | "select" | "number" | "date";
+      placeholder?: string;
+      options?: string[];
+      hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "multiselect" | "checklist";
+      options: string[];
+      hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "files";
+      slots?: string[]; // named upload rows; if omitted, single free-form uploader
+      hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "injects" | "roster";
+      hint?: string;
+    };
 
 export type Step = {
   id: number;
@@ -21,9 +62,24 @@ export const PHASES: { name: Step["phase"]; hue: string; blurb: string }[] = [
   { name: "Profile", hue: "primary", blurb: "Define the exercise identity, hazards and objectives." },
   { name: "Structure", hue: "gold", blurb: "Assemble the groups, facilitators and role players." },
   { name: "Scenario", hue: "coral", blurb: "Build the dual-hazard narrative and decision points." },
-  { name: "Agenda", hue: "primary", blurb: "Design the three-day flow of sessions and injects." },
+  { name: "Agenda", hue: "primary", blurb: "Design the three-day flow of sessions, injects and outputs." },
   { name: "Delivery", hue: "gold", blurb: "Prepare, rehearse and run the exercise." },
   { name: "Review", hue: "coral", blurb: "Capture lessons and finalise the AAR." },
+];
+
+export const INJECT_TYPE_OPTIONS = [
+  "Bulletin",
+  "WhatsApp message",
+  "Laboratory report",
+  "News clip",
+  "Map",
+  "Video",
+  "Dashboard",
+  "SitRep",
+  "Ministerial query",
+  "Community feedback",
+  "Rumour",
+  "AAR prompt",
 ];
 
 export const STEPS: Step[] = [
@@ -102,16 +158,22 @@ export const STEPS: Step[] = [
     short: "Roles",
     phase: "Structure",
     summary:
-      "Assign the nine generic roles: Exercise Director, Lead Facilitator, Group Facilitators, Minister of Health, EM Actor, PH Technical Actor, One Health Actor, Risk Communication Actor, Rapporteur/Evaluator.",
+      "Assign the nine generic roles used across the exercise. Names entered here flow into the final report and facilitator pack.",
     bullets: [
       "Minister of Health role activates on Day 2 and Day 3 — challenges recommendations, asks about legal/political implications.",
       "Group Facilitators guide, question and observe — they must never solve the scenario for participants.",
+      "The Rapporteur/Evaluator captures decisions, gaps and improvement proposals throughout.",
     ],
     fields: [
       { key: "director", label: "Exercise Director", type: "text" },
       { key: "lead", label: "Lead Facilitator", type: "text" },
+      { key: "groupFac", label: "Group Facilitator(s)", type: "textarea", placeholder: "One name per line — one facilitator per group." },
       { key: "minister", label: "Minister of Health Actor", type: "text" },
+      { key: "emActor", label: "Emergency Management Actor", type: "text" },
+      { key: "phActor", label: "Public Health Technical Actor", type: "text" },
+      { key: "oneHealthActor", label: "One Health / Environmental Actor", type: "text" },
       { key: "media", label: "Risk Communication / Media Actor", type: "text" },
+      { key: "rapporteur", label: "Rapporteur / Evaluator", type: "text" },
     ],
   },
   {
@@ -149,7 +211,11 @@ export const STEPS: Step[] = [
       "Group work: initial risk assessment.",
       "End-of-day SitRep 1.",
     ],
-    fields: [{ key: "day1", label: "Day 1 Session Plan", type: "textarea" }],
+    fields: [
+      { key: "day1", label: "Day 1 Session Plan", type: "textarea" },
+      { key: "day1Outputs", label: "Required Day 1 Outputs", type: "textarea", placeholder: "SitRep 1, initial risk assessment, decision log…" },
+      { key: "day1Injects", label: "Day 1 Injects", type: "injects", hint: "Add each inject with a name and upload the supporting file(s)." },
+    ],
   },
   {
     id: 7,
@@ -165,7 +231,11 @@ export const STEPS: Step[] = [
       "One Health inject connecting animal, environmental and human signals.",
       "SitRep 2.",
     ],
-    fields: [{ key: "day2", label: "Day 2 Session Plan", type: "textarea" }],
+    fields: [
+      { key: "day2", label: "Day 2 Session Plan", type: "textarea" },
+      { key: "day2Outputs", label: "Required Day 2 Outputs", type: "textarea", placeholder: "SitRep 2, ministerial briefing note, media statement…" },
+      { key: "day2Injects", label: "Day 2 Injects", type: "injects", hint: "Add each inject with a name and upload the supporting file(s)." },
+    ],
   },
   {
     id: 8,
@@ -180,7 +250,11 @@ export const STEPS: Step[] = [
       "Facilitated After-Action Review.",
       "Certificates and closing plenary.",
     ],
-    fields: [{ key: "day3", label: "Day 3 Session Plan", type: "textarea" }],
+    fields: [
+      { key: "day3", label: "Day 3 Session Plan", type: "textarea" },
+      { key: "day3Outputs", label: "Required Day 3 Outputs", type: "textarea", placeholder: "SitRep 3, recovery plan, AAR outputs, certificates…" },
+      { key: "day3Injects", label: "Day 3 Injects", type: "injects", hint: "Add each inject with a name and upload the supporting file(s)." },
+    ],
   },
   {
     id: 9,
@@ -189,7 +263,14 @@ export const STEPS: Step[] = [
     phase: "Delivery",
     summary:
       "For every inject capture: number, time, scenario development, recommended inject type, expected discussion / decision and owner.",
-    fields: [{ key: "injects", label: "Inject Log", type: "textarea", placeholder: "#01 · 09:15 · Hurricane advisory · Bulletin · Activate EOC · Lead Facilitator" }],
+    fields: [
+      {
+        key: "injects",
+        label: "Inject Log",
+        type: "textarea",
+        placeholder: "#01 · 09:15 · Hurricane advisory · Bulletin · Activate EOC · Lead Facilitator",
+      },
+    ],
   },
   {
     id: 10,
@@ -197,70 +278,113 @@ export const STEPS: Step[] = [
     short: "Inject Mix",
     phase: "Delivery",
     summary:
-      "Vary the inject formats to keep pressure realistic: WhatsApp messages, lab reports, news clips, maps, videos, dashboards and formal SitReps.",
-    bullets: [
-      "Day 1 — bulletins, WhatsApp messages, early surveillance snapshots.",
-      "Day 2 — laboratory reports, media requests, dashboards, ministerial queries.",
-      "Day 3 — recovery bulletins, community feedback, AAR prompts.",
+      "Vary the inject formats to keep pressure realistic. Tap any bubble to add or remove that inject type for the day. Multiple selections per day are expected.",
+    fields: [
+      { key: "day1Types", label: "Day 1 inject types", type: "multiselect", options: INJECT_TYPE_OPTIONS },
+      { key: "day2Types", label: "Day 2 inject types", type: "multiselect", options: INJECT_TYPE_OPTIONS },
+      { key: "day3Types", label: "Day 3 inject types", type: "multiselect", options: INJECT_TYPE_OPTIONS },
     ],
   },
   {
     id: 11,
-    title: "Define Daily Outputs",
-    short: "Outputs",
-    phase: "Delivery",
-    summary:
-      "Each day must produce tangible outputs: SitReps, decision logs, ministerial briefings, action plans and observation notes.",
-    fields: [{ key: "outputs", label: "Required Daily Outputs", type: "textarea" }],
-  },
-  {
-    id: 12,
     title: "Use the Daily SitRep Template",
     short: "SitRep",
     phase: "Delivery",
     summary:
       "Standardise Situation Reports across groups so evaluators can compare quality and timeliness.",
     bullets: ["Header · Situation Overview · Health Impact · Response Actions · Gaps · Recommendations · Next Steps."],
+    fields: [
+      { key: "sitrepNotes", label: "SitRep Notes", type: "textarea", placeholder: "Any local adaptations to the template." },
+      { key: "sitrepTemplate", label: "SitRep Template File", type: "files", hint: "Upload the SitRep template used by all groups." },
+    ],
   },
   {
-    id: 13,
+    id: 12,
     title: "Prepare Facilitator Materials",
     short: "Materials",
     phase: "Delivery",
     summary:
-      "Assemble the facilitator pack: scenario document, inject schedule, expected responses, escalation pathways, evaluator checklists.",
+      "Assemble the facilitator pack. Upload each component below so it can be bundled into the exercise ZIP.",
+    fields: [
+      {
+        key: "pack",
+        label: "Facilitator Pack",
+        type: "files",
+        slots: [
+          "Scenario document",
+          "Inject schedule",
+          "Expected responses",
+          "Escalation pathways",
+          "Evaluator checklists",
+        ],
+      },
+    ],
   },
   {
-    id: 14,
+    id: 13,
     title: "Conduct a Facilitator Rehearsal",
     short: "Rehearsal",
     phase: "Delivery",
     summary:
       "Walk the entire scenario end-to-end with facilitators and actors at least 48 hours before Day 1.",
+    fields: [
+      { key: "rehearsalDate", label: "Rehearsal Date", type: "date" },
+      { key: "rehearsalVenue", label: "Rehearsal Venue / Link", type: "text", placeholder: "EOC boardroom / Zoom" },
+      { key: "rehearsalTeam", label: "Rehearsal Team", type: "roster", hint: "Add each attendee with their role and email." },
+      { key: "rehearsalNotes", label: "Rehearsal Notes", type: "textarea" },
+    ],
   },
   {
-    id: 15,
+    id: 14,
     title: "Monitor Exercise Progress",
     short: "Monitor",
     phase: "Delivery",
     summary:
       "During delivery: watch timing, participation balance, decision quality and inject flow. Adjust pace, not the learning objectives.",
+    fields: [
+      {
+        key: "monitorChecklist",
+        label: "Monitoring Checklist",
+        type: "checklist",
+        options: [
+          "Timing on track against agenda",
+          "Balanced participation across disciplines",
+          "Decision quality captured by rapporteur",
+          "Injects delivered on cue",
+          "Evaluators positioned at each group",
+          "Role-play actors coordinated",
+          "Room logistics stable (AV, catering, breaks)",
+          "Safety and wellbeing observed",
+          "Media / rumour pressure calibrated",
+          "Adjustments logged for AAR",
+        ],
+      },
+      { key: "monitorNotes", label: "Monitoring Notes", type: "textarea" },
+    ],
   },
   {
-    id: 16,
+    id: 15,
     title: "Complete the After-Action Review",
     short: "AAR",
     phase: "Review",
     summary:
-      "Structured AAR: what was planned, what happened, why, what will be improved. Translate observations into corrective actions with owners and dates.",
-    fields: [{ key: "aar", label: "AAR Findings & Actions", type: "textarea" }],
+      "Structured AAR: capture what was planned, what happened, why, and what will be improved. Translate observations into corrective actions with owners and dates.",
+    fields: [
+      { key: "aarPlanned", label: "What was planned", type: "textarea" },
+      { key: "aarHappened", label: "What actually happened", type: "textarea" },
+      { key: "aarWhy", label: "Why — root causes & contributing factors", type: "textarea" },
+      { key: "aarImprove", label: "What will be improved (actions, owners, dates)", type: "textarea" },
+    ],
   },
   {
-    id: 17,
+    id: 16,
     title: "Final Quality Check",
     short: "Sign-off",
     phase: "Review",
     summary:
       "Confirm every objective has success criteria, every inject has an owner, every day has outputs, and the AAR is scheduled.",
+    fields: [
+      { key: "signoff", label: "Sign-off Notes", type: "textarea" },
+    ],
   },
 ];
