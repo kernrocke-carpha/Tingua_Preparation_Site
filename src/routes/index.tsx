@@ -1,18 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import heroImg from "@/assets/tingua-hero.jpg";
-import { STEPS, PHASES, type Step } from "@/lib/tingua-steps";
+import { STEPS, PHASES, type StepField, type FileAttachment, type InjectEntry, type RosterEntry } from "@/lib/tingua-steps";
+import {
+  buildDocx,
+  buildMarkdown,
+  buildSaveJson,
+  buildZip,
+  downloadBlob,
+  fileToAttachment,
+  readSaveJson,
+  type PlanState,
+} from "@/lib/tingua-export";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const STORAGE_KEY = "tingua-simex-planner-v1";
-
-type FormState = Record<string, Record<string, string>>;
+const STORAGE_KEY = "tingua-simex-planner-v2";
 
 function useLocalPlan() {
-  const [state, setState] = useState<FormState>({});
+  const [state, setState] = useState<PlanState>({});
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -27,58 +35,94 @@ function useLocalPlan() {
     if (!ready) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {}
+    } catch {
+      // quota exceeded — fall back silently; user can still export
+    }
   }, [state, ready]);
 
-  const set = (stepId: number, key: string, value: string) =>
+  const set = (stepId: number, key: string, value: unknown) =>
     setState((s) => ({ ...s, [stepId]: { ...(s[stepId] ?? {}), [key]: value } }));
+
+  const replace = (next: PlanState) => setState(next);
 
   const reset = () => setState({});
 
-  return { state, set, reset, ready };
+  return { state, set, replace, reset, ready };
+}
+
+function isFilled(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") {
+    const vals = Object.values(v as Record<string, unknown>);
+    return vals.some((x) => isFilled(x));
+  }
+  return false;
 }
 
 function Index() {
-  const { state, set, reset, ready } = useLocalPlan();
+  const { state, set, replace, reset, ready } = useLocalPlan();
   const [activeStep, setActiveStep] = useState(1);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+  const loadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!ready) return;
     const c = new Set<number>();
     for (const s of STEPS) {
-      const entries = state[s.id];
       if (!s.fields || s.fields.length === 0) continue;
-      if (entries && s.fields.some((f) => (entries[f.key] ?? "").trim().length > 0)) {
-        c.add(s.id);
-      }
+      const entries = state[s.id];
+      if (entries && s.fields.some((f) => isFilled(entries[f.key]))) c.add(s.id);
     }
     setCompleted(c);
   }, [state, ready]);
 
-  const progress = Math.round((completed.size / STEPS.filter((s) => s.fields?.length).length) * 100);
+  const totalFillable = STEPS.filter((s) => s.fields?.length).length;
+  const progress = Math.round((completed.size / totalFillable) * 100);
   const step = useMemo(() => STEPS.find((s) => s.id === activeStep) ?? STEPS[0], [activeStep]);
 
-  const exportPlan = () => {
-    const lines: string[] = [];
-    lines.push("# Tingua SimEx — Exercise Plan\n");
-    for (const s of STEPS) {
-      lines.push(`\n## Step ${s.id}. ${s.title}`);
-      lines.push(s.summary);
-      if (s.fields) {
-        for (const f of s.fields) {
-          const v = state[s.id]?.[f.key];
-          if (v && v.trim()) lines.push(`- **${f.label}:** ${v}`);
-        }
-      }
+  const runExport = async (label: string, fn: () => Promise<void> | void) => {
+    setBusy(label);
+    try {
+      await fn();
+    } catch (err) {
+      console.error(err);
+      alert(`Export failed: ${(err as Error).message ?? err}`);
+    } finally {
+      setBusy(null);
     }
-    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "tingua-simex-plan.md";
-    a.click();
-    URL.revokeObjectURL(url);
+  };
+
+  const exportMarkdown = () =>
+    runExport("markdown", () => {
+      const blob = new Blob([buildMarkdown(state)], { type: "text/markdown" });
+      downloadBlob(blob, "tingua-simex-plan.md");
+    });
+  const exportWord = () =>
+    runExport("word", async () => {
+      const blob = await buildDocx(state);
+      downloadBlob(blob, "tingua-simex-plan.docx");
+    });
+  const exportZip = () =>
+    runExport("zip", async () => {
+      const blob = await buildZip(state);
+      downloadBlob(blob, "tingua-simex-delivery-pack.zip");
+    });
+  const saveProgress = () =>
+    runExport("save", () => {
+      downloadBlob(buildSaveJson(state), "tingua-simex-progress.json");
+    });
+  const onLoadFile = async (file: File) => {
+    try {
+      const next = await readSaveJson(file);
+      if (!confirm("This will replace your current planner data. Continue?")) return;
+      replace(next);
+      setActiveStep(1);
+    } catch (err) {
+      alert(`Could not load file: ${(err as Error).message ?? err}`);
+    }
   };
 
   return (
@@ -121,7 +165,7 @@ function Index() {
             <span className="italic text-[oklch(0.82_0.14_60)]">small island world</span>.
           </h1>
           <p className="mt-8 max-w-2xl text-lg text-[oklch(0.94_0.02_85)]/85">
-            Tingua is a fictional Caribbean state where a hurricane, a rising outbreak and a strained health system arrive at the same time. This interactive toolkit walks planners through seventeen steps to design, deliver and review a dual-hazard exercise.
+            Tingua is a fictional Caribbean state where a hurricane, a rising outbreak and a strained health system arrive at the same time. This interactive toolkit walks planners through every step to design, deliver and review a dual-hazard exercise.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
             <a href="#planner" className="rounded-full bg-[oklch(0.68_0.17_30)] text-[oklch(0.98_0.01_85)] px-5 py-3 text-sm font-medium hover:brightness-110">
@@ -135,7 +179,7 @@ function Index() {
           <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl">
             {[
               ["3", "days of scenario"],
-              ["17", "planning steps"],
+              [`${STEPS.length}`, "planning steps"],
               ["9", "facilitator roles"],
               ["2", "hazards, one crisis"],
             ].map(([n, l]) => (
@@ -171,7 +215,7 @@ function Index() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-end justify-between flex-wrap gap-6">
             <div>
-              <div className="text-xs font-mono uppercase tracking-[0.25em] text-[oklch(0.82_0.14_60)]">§ 17 steps · 6 phases</div>
+              <div className="text-xs font-mono uppercase tracking-[0.25em] text-[oklch(0.82_0.14_60)]">§ {STEPS.length} steps · 6 phases</div>
               <h2 className="mt-4 font-display text-4xl md:text-5xl">The planning arc</h2>
             </div>
             <p className="max-w-md text-sm text-[oklch(0.94_0.02_85)]/70">
@@ -218,27 +262,56 @@ function Index() {
 
       {/* Planner */}
       <section id="planner" className="max-w-7xl mx-auto px-6 py-24">
-        <div className="flex items-end justify-between flex-wrap gap-6 mb-10">
+        <div className="flex items-end justify-between flex-wrap gap-6 mb-6">
           <div>
             <div className="text-xs font-mono uppercase tracking-[0.25em] text-coral">§ Interactive planner</div>
             <h2 className="mt-4 font-display text-4xl md:text-5xl">Build your exercise</h2>
             <p className="mt-3 max-w-xl text-foreground/70">
-              Progress {progress}% · {completed.size} of {STEPS.filter((s) => s.fields?.length).length} interactive steps filled. Autosaves to your browser.
+              Progress {progress}% · {completed.size} of {totalFillable} interactive steps filled. Autosaves to your browser.
             </p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={exportPlan} className="text-sm rounded-full bg-primary text-primary-foreground px-4 py-2 hover:bg-primary/90">
-              Export as Markdown
-            </button>
-            <button
-              onClick={() => {
-                if (confirm("Clear all planner inputs from this browser?")) reset();
-              }}
-              className="text-sm rounded-full border border-border px-4 py-2 hover:bg-muted"
-            >
-              Reset
-            </button>
-          </div>
+        </div>
+
+        {/* Export bar */}
+        <div className="mb-8 rounded-2xl border border-border bg-card p-4 md:p-5 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground mr-2">Export</span>
+          <button onClick={exportWord} disabled={!!busy} className="text-sm rounded-full bg-primary text-primary-foreground px-4 py-2 hover:bg-primary/90 disabled:opacity-50">
+            {busy === "word" ? "Building…" : "Word report (.docx)"}
+          </button>
+          <button onClick={exportZip} disabled={!!busy} className="text-sm rounded-full bg-coral text-[oklch(0.98_0.01_85)] px-4 py-2 hover:brightness-110 disabled:opacity-50">
+            {busy === "zip" ? "Packing…" : "Full delivery pack (.zip)"}
+          </button>
+          <button onClick={exportMarkdown} disabled={!!busy} className="text-sm rounded-full border border-border px-4 py-2 hover:bg-muted disabled:opacity-50">
+            Markdown
+          </button>
+          <span className="w-px h-6 bg-border mx-2 hidden md:block" />
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground mr-2">Save / Resume</span>
+          <button onClick={saveProgress} disabled={!!busy} className="text-sm rounded-full border border-border px-4 py-2 hover:bg-muted disabled:opacity-50">
+            Save progress (.json)
+          </button>
+          <button onClick={() => loadInputRef.current?.click()} disabled={!!busy} className="text-sm rounded-full border border-border px-4 py-2 hover:bg-muted disabled:opacity-50">
+            Load progress…
+          </button>
+          <input
+            ref={loadInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onLoadFile(f);
+              e.target.value = "";
+            }}
+          />
+          <div className="grow" />
+          <button
+            onClick={() => {
+              if (confirm("Clear all planner inputs from this browser?")) reset();
+            }}
+            className="text-sm rounded-full border border-border px-4 py-2 hover:bg-muted"
+          >
+            Reset
+          </button>
         </div>
 
         {/* Progress bar */}
@@ -326,12 +399,11 @@ function Index() {
                 <div className="text-xs font-mono uppercase tracking-[0.2em] text-primary mb-6">Your inputs</div>
                 <div className="grid md:grid-cols-2 gap-5">
                   {step.fields.map((f) => (
-                    <Field
+                    <FieldRenderer
                       key={f.key}
                       field={f}
-                      value={state[step.id]?.[f.key] ?? ""}
+                      value={state[step.id]?.[f.key]}
                       onChange={(v) => set(step.id, f.key, v)}
-                      full={f.type === "textarea"}
                     />
                   ))}
                 </div>
@@ -378,40 +450,396 @@ function Index() {
   );
 }
 
-function Field({
+// ================= Field renderer =================
+
+function FieldRenderer({
   field,
   value,
   onChange,
-  full,
 }: {
-  field: import("@/lib/tingua-steps").StepField;
-  value: string;
-  onChange: (v: string) => void;
-  full?: boolean;
+  field: StepField;
+  value: unknown;
+  onChange: (v: unknown) => void;
 }) {
-  const common = "w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition";
-  return (
+  const full =
+    field.type === "textarea" ||
+    field.type === "multiselect" ||
+    field.type === "checklist" ||
+    field.type === "files" ||
+    field.type === "injects" ||
+    field.type === "roster";
+
+  const inputClass =
+    "w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition";
+
+  const wrap = (children: React.ReactNode) => (
     <label className={`block ${full ? "md:col-span-2" : ""}`}>
       <span className="block text-xs font-medium text-foreground/80 mb-1.5">{field.label}</span>
-      {field.type === "textarea" ? (
-        <textarea rows={4} value={value} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} className={common} />
-      ) : field.type === "select" ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={common}>
-          <option value="">Choose…</option>
-          {field.options?.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type={field.type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder}
-          className={common}
-        />
+      {children}
+      {"hint" in field && field.hint && (
+        <span className="block text-[11px] text-muted-foreground mt-1.5">{field.hint}</span>
       )}
     </label>
+  );
+
+  switch (field.type) {
+    case "text":
+    case "number":
+    case "date":
+      return wrap(
+        <input
+          type={field.type}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          className={inputClass}
+        />
+      );
+    case "textarea":
+      return wrap(
+        <textarea
+          rows={4}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          className={inputClass}
+        />
+      );
+    case "select":
+      return wrap(
+        <select
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+        >
+          <option value="">Choose…</option>
+          {field.options?.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      );
+    case "multiselect":
+      return wrap(<BubbleMulti value={Array.isArray(value) ? (value as string[]) : []} options={field.options} onChange={onChange} accent="primary" />);
+    case "checklist":
+      return wrap(<Checklist value={Array.isArray(value) ? (value as string[]) : []} options={field.options} onChange={onChange} />);
+    case "files":
+      return wrap(
+        field.slots ? (
+          <SlotFiles value={(value as Record<string, FileAttachment[]>) ?? {}} slots={field.slots} onChange={onChange} />
+        ) : (
+          <FreeFiles value={Array.isArray(value) ? (value as FileAttachment[]) : []} onChange={onChange} />
+        )
+      );
+    case "injects":
+      return wrap(<InjectsField value={Array.isArray(value) ? (value as InjectEntry[]) : []} onChange={onChange} />);
+    case "roster":
+      return wrap(<RosterField value={Array.isArray(value) ? (value as RosterEntry[]) : []} onChange={onChange} />);
+  }
+}
+
+function BubbleMulti({
+  value,
+  options,
+  onChange,
+  accent,
+}: {
+  value: string[];
+  options: string[];
+  onChange: (v: string[]) => void;
+  accent: "primary" | "coral";
+}) {
+  const toggle = (opt: string) => {
+    if (value.includes(opt)) onChange(value.filter((x) => x !== opt));
+    else onChange([...value, opt]);
+  };
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const on = value.includes(opt);
+        const activeCls = accent === "primary" ? "bg-primary text-primary-foreground border-primary" : "bg-coral text-[oklch(0.98_0.01_85)] border-coral";
+        return (
+          <button
+            type="button"
+            key={opt}
+            onClick={() => toggle(opt)}
+            className={`text-xs rounded-full border px-3 py-1.5 transition ${
+              on ? activeCls : "border-border bg-background hover:bg-muted text-foreground/80"
+            }`}
+          >
+            {on ? "✓ " : ""}
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Checklist({
+  value,
+  options,
+  onChange,
+}: {
+  value: string[];
+  options: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const toggle = (opt: string) => {
+    if (value.includes(opt)) onChange(value.filter((x) => x !== opt));
+    else onChange([...value, opt]);
+  };
+  return (
+    <div className="space-y-2">
+      {options.map((opt) => {
+        const on = value.includes(opt);
+        return (
+          <label key={opt} className="flex items-start gap-3 text-sm cursor-pointer group">
+            <span
+              className={`mt-0.5 shrink-0 w-4 h-4 rounded border grid place-items-center text-[10px] ${
+                on ? "bg-primary border-primary text-primary-foreground" : "border-input bg-background group-hover:border-primary/60"
+              }`}
+            >
+              {on ? "✓" : ""}
+            </span>
+            <input type="checkbox" checked={on} onChange={() => toggle(opt)} className="sr-only" />
+            <span className={on ? "text-foreground" : "text-foreground/75"}>{opt}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+async function attachmentsFromFileList(files: FileList | null): Promise<FileAttachment[]> {
+  if (!files) return [];
+  const out: FileAttachment[] = [];
+  for (const f of Array.from(files)) out.push(await fileToAttachment(f));
+  return out;
+}
+
+function FileChip({ file, onRemove }: { file: FileAttachment; onRemove: () => void }) {
+  const kb = Math.max(1, Math.round(file.size / 1024));
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs">
+      <span className="font-mono text-[10px] uppercase text-muted-foreground">FILE</span>
+      <span className="truncate max-w-[220px]" title={file.name}>{file.name}</span>
+      <span className="text-muted-foreground">· {kb} KB</span>
+      <button type="button" onClick={onRemove} className="ml-1 text-muted-foreground hover:text-coral" aria-label="Remove file">
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function UploadButton({ onFiles, label = "Upload files" }: { onFiles: (files: FileAttachment[]) => void; label?: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => ref.current?.click()}
+        className="text-xs rounded-full border border-dashed border-primary/50 text-primary px-3 py-1.5 hover:bg-primary/5"
+      >
+        ＋ {label}
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={async (e) => {
+          const files = await attachmentsFromFileList(e.target.files);
+          if (files.length) onFiles(files);
+          e.target.value = "";
+        }}
+      />
+    </>
+  );
+}
+
+function FreeFiles({ value, onChange }: { value: FileAttachment[]; onChange: (v: FileAttachment[]) => void }) {
+  return (
+    <div className="space-y-3">
+      <UploadButton onFiles={(fs) => onChange([...value, ...fs])} />
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {value.map((f, i) => (
+            <FileChip key={i} file={f} onRemove={() => onChange(value.filter((_, j) => j !== i))} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SlotFiles({
+  value,
+  slots,
+  onChange,
+}: {
+  value: Record<string, FileAttachment[]>;
+  slots: string[];
+  onChange: (v: Record<string, FileAttachment[]>) => void;
+}) {
+  const setSlot = (slot: string, files: FileAttachment[]) => onChange({ ...value, [slot]: files });
+  return (
+    <div className="space-y-3">
+      {slots.map((slot) => {
+        const files = value[slot] ?? [];
+        return (
+          <div key={slot} className="rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-sm font-medium">{slot}</div>
+              <UploadButton onFiles={(fs) => setSlot(slot, [...files, ...fs])} label="Add file" />
+            </div>
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {files.map((f, i) => (
+                  <FileChip key={i} file={f} onRemove={() => setSlot(slot, files.filter((_, j) => j !== i))} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InjectsField({ value, onChange }: { value: InjectEntry[]; onChange: (v: InjectEntry[]) => void }) {
+  const [name, setName] = useState("");
+  const [pending, setPending] = useState<FileAttachment[]>([]);
+
+  const add = () => {
+    if (!name.trim() && pending.length === 0) return;
+    const entry: InjectEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: name.trim() || "Untitled inject",
+      files: pending,
+    };
+    onChange([...value, entry]);
+    setName("");
+    setPending([]);
+  };
+
+  const removeInject = (id: string) => onChange(value.filter((x) => x.id !== id));
+  const removeFileFromInject = (id: string, idx: number) =>
+    onChange(value.map((x) => (x.id === id ? { ...x, files: x.files.filter((_, i) => i !== idx) } : x)));
+  const addFileToInject = (id: string, files: FileAttachment[]) =>
+    onChange(value.map((x) => (x.id === id ? { ...x, files: [...x.files, ...files] } : x)));
+
+  return (
+    <div className="space-y-4">
+      {/* Add form */}
+      <div className="rounded-lg border border-dashed border-primary/40 bg-primary/[0.03] p-3 space-y-3">
+        <div className="grid md:grid-cols-[1fr_auto_auto] gap-2 items-center">
+          <input
+            type="text"
+            placeholder="Name of inject (e.g. Hurricane advisory #1)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+          <UploadButton onFiles={(fs) => setPending([...pending, ...fs])} label="Attach file(s)" />
+          <button
+            type="button"
+            onClick={add}
+            className="text-xs rounded-full bg-primary text-primary-foreground px-3 py-2 hover:bg-primary/90"
+          >
+            Add to log
+          </button>
+        </div>
+        {pending.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {pending.map((f, i) => (
+              <FileChip key={i} file={f} onRemove={() => setPending(pending.filter((_, j) => j !== i))} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Log */}
+      <div>
+        <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-2">
+          Inject log · {value.length} {value.length === 1 ? "entry" : "entries"}
+        </div>
+        {value.length === 0 ? (
+          <div className="text-xs text-muted-foreground italic">No injects added yet.</div>
+        ) : (
+          <ol className="space-y-2">
+            {value.map((inj, i) => (
+              <li key={inj.id} className="rounded-lg border border-border bg-background p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-mono text-primary">#{String(i + 1).padStart(2, "0")}</div>
+                    <div className="text-sm font-medium truncate">{inj.name}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <UploadButton onFiles={(fs) => addFileToInject(inj.id, fs)} label="Add" />
+                    <button
+                      type="button"
+                      onClick={() => removeInject(inj.id)}
+                      className="text-xs rounded-md border border-border px-2 py-1 hover:bg-muted text-muted-foreground"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {inj.files.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {inj.files.map((f, idx) => (
+                      <FileChip key={idx} file={f} onRemove={() => removeFileFromInject(inj.id, idx)} />
+                    ))}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RosterField({ value, onChange }: { value: RosterEntry[]; onChange: (v: RosterEntry[]) => void }) {
+  const add = () =>
+    onChange([...value, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: "", role: "", email: "" }]);
+  const update = (id: string, patch: Partial<RosterEntry>) =>
+    onChange(value.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const remove = (id: string) => onChange(value.filter((r) => r.id !== id));
+
+  const inputClass =
+    "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary";
+
+  return (
+    <div className="space-y-2">
+      {value.length === 0 && (
+        <div className="text-xs text-muted-foreground italic">No team members added yet.</div>
+      )}
+      {value.map((r) => (
+        <div key={r.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2">
+          <input value={r.name} onChange={(e) => update(r.id, { name: e.target.value })} placeholder="Name" className={inputClass} />
+          <input value={r.role} onChange={(e) => update(r.id, { role: e.target.value })} placeholder="Role" className={inputClass} />
+          <input value={r.email} onChange={(e) => update(r.id, { email: e.target.value })} placeholder="Email" type="email" className={inputClass} />
+          <button
+            type="button"
+            onClick={() => remove(r.id)}
+            className="text-xs rounded-md border border-border px-2 py-1 hover:bg-muted text-muted-foreground"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={add}
+        className="text-xs rounded-full border border-dashed border-primary/50 text-primary px-3 py-1.5 hover:bg-primary/5"
+      >
+        ＋ Add team member
+      </button>
+    </div>
   );
 }
 
