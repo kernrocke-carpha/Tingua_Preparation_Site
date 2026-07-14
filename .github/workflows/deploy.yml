@@ -1,0 +1,83 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main] # change to "master" if that's your default branch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # Normalize to a single leading + trailing slash, e.g. "/Tingua_Preparation_Site/".
+      # Resolves to "/" for a root user/org page or a custom domain.
+      - name: Compute base path
+        run: |
+          BASE="${{ steps.pages.outputs.base_path }}"
+          BASE="/${BASE#/}"
+          BASE="${BASE%/}/"
+          echo "BASE_PATH=$BASE" >> "$GITHUB_ENV"
+          echo "Building with base: $BASE"
+
+      - name: Build (static via Nitro github_pages preset)
+        run: bun run build
+
+      # Show where the static site landed so we can confirm / adjust the upload path.
+      - name: Show build output
+        run: |
+          echo "--- .output/public ---"
+          ls -R .output/public | head -n 60
+
+      # Nitro's prerenderer writes the home page as "index" (no extension);
+      # GitHub Pages only serves "index.html" as a directory index. Rename it,
+      # then use it as the SPA fallback so deep links / refreshes still resolve.
+      - name: Fix index + add 404 fallback
+        run: |
+          cd .output/public
+          if [ -f index ] && [ ! -f index.html ]; then
+            mv index index.html
+            echo "Renamed index -> index.html"
+          fi
+          cp index.html 404.html
+          echo "--- final .output/public ---"
+          ls -la
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .output/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
