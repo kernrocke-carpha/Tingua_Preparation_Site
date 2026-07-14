@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy redirect to GitHub Pages
 
 on:
   push:
@@ -15,53 +15,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Configure Pages
-        id: pages
-        uses: actions/configure-pages@v5
-
-      # Build a fully static site with Nitro's github_pages preset.
-      # This preset:
-      #   - writes .output/public/index.html (no manual rename needed)
-      #   - auto-generates 404.html as the SPA fallback
-      #   - applies the Pages base path
-      - name: Build (static via Nitro github_pages preset)
-        run: bun run build
-        env:
-          NITRO_PRESET: github_pages
-
-      # Kept temporarily so you can confirm index.html actually appears.
-      # Once you've verified a successful deploy, you can delete this step.
-      - name: Show build output
-        run: |
-          echo "--- .output/public ---"
-          ls -R .output/public | head -n 60
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .output/public
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # Assemble a one-page site: index.html is the redirect, and 404.html is a
+      # copy so any deep link under the Pages URL also forwards to Cloudflare.
+      - name: Prepare redirect site
+        run: |
+          mkdir -p _site
+          cp gh-pages-redirect/index.html _site/index.html
+          cp gh-pages-redirect/index.html _site/404.html
+          echo "--- _site ---"
+          ls -la _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
