@@ -33,38 +33,22 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
-      # Normalize to a single leading + trailing slash, e.g. "/Tingua_Preparation_Site/".
-      # Resolves to "/" for a root user/org page or a custom domain.
-      - name: Compute base path
-        run: |
-          BASE="${{ steps.pages.outputs.base_path }}"
-          BASE="/${BASE#/}"
-          BASE="${BASE%/}/"
-          echo "BASE_PATH=$BASE" >> "$GITHUB_ENV"
-          echo "Building with base: $BASE"
-
+      # Build a fully static site with Nitro's github_pages preset.
+      # This preset:
+      #   - writes .output/public/index.html (no manual rename needed)
+      #   - auto-generates 404.html as the SPA fallback
+      #   - applies the Pages base path
       - name: Build (static via Nitro github_pages preset)
         run: bun run build
+        env:
+          NITRO_PRESET: github_pages
 
-      # Show where the static site landed so we can confirm / adjust the upload path.
+      # Kept temporarily so you can confirm index.html actually appears.
+      # Once you've verified a successful deploy, you can delete this step.
       - name: Show build output
         run: |
           echo "--- .output/public ---"
           ls -R .output/public | head -n 60
-
-      # Nitro's prerenderer writes the home page as "index" (no extension);
-      # GitHub Pages only serves "index.html" as a directory index. Rename it,
-      # then use it as the SPA fallback so deep links / refreshes still resolve.
-      - name: Fix index + add 404 fallback
-        run: |
-          cd .output/public
-          if [ -f index ] && [ ! -f index.html ]; then
-            mv index index.html
-            echo "Renamed index -> index.html"
-          fi
-          cp index.html 404.html
-          echo "--- final .output/public ---"
-          ls -la
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
