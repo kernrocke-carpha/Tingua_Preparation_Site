@@ -79,6 +79,27 @@ function Index() {
     setCompleted(c);
   }, [state, ready]);
 
+  // Auto-populate fields declared with `autofillFrom` when they are still empty.
+  useEffect(() => {
+    if (!ready) return;
+    for (const s of STEPS) {
+      for (const f of s.fields ?? []) {
+        if ("autofillFrom" in f && f.autofillFrom) {
+          const current = state[s.id]?.[f.key];
+          const source = state[f.autofillFrom.step]?.[f.autofillFrom.key];
+          if (
+            (current == null || (typeof current === "string" && current.trim() === "")) &&
+            typeof source === "string" &&
+            source.trim() !== ""
+          ) {
+            set(s.id, f.key, source);
+          }
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state[1]?.participants, ready]);
+
   const totalFillable = STEPS.filter((s) => s.fields?.length).length;
   const progress = Math.round((completed.size / totalFillable) * 100);
   const step = useMemo(() => STEPS.find((s) => s.id === activeStep) ?? STEPS[0], [activeStep]);
