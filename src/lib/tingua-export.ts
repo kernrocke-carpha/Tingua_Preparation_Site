@@ -198,6 +198,23 @@ function stepChildren(step: Step, state: PlanState): (Paragraph | Table)[] {
         out.push(p(f.label, { bold: true, color: TEAL }));
         for (const item of arr) out.push(new Paragraph({ text: item, bullet: { level: 0 } }));
       }
+    } else if (f.type === "hazards") {
+      const arr = asArray<HazardSelection>(v);
+      if (arr.length) {
+        out.push(p(f.label, { bold: true, color: TEAL }));
+        for (const h of arr) {
+          out.push(new Paragraph({ text: `${h.option}${h.name ? ` — ${h.name}` : ""}`, bullet: { level: 0 } }));
+        }
+      }
+    } else if (f.type === "namedList") {
+      const arr = asArray<NamedListEntry>(v);
+      if (arr.length) {
+        out.push(p(f.label, { bold: true, color: TEAL }));
+        for (const r of arr) {
+          out.push(p(`• ${r.title || "(untitled)"}`, { bold: true }));
+          if (r.description) out.push(p(r.description));
+        }
+      }
     } else if (f.type === "injects") {
       const arr = asArray<InjectEntry>(v);
       if (arr.length) {
