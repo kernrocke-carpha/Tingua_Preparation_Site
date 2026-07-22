@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import heroImg from "@/assets/tingua-hero.jpg";
-import { STEPS, PHASES, type StepField, type FileAttachment, type InjectEntry, type RosterEntry } from "@/lib/tingua-steps";
+import { STEPS, PHASES, type StepField, type FileAttachment, type InjectEntry, type RosterEntry, type HazardSelection, type NamedListEntry } from "@/lib/tingua-steps";
 import {
   buildDocx,
   buildMarkdown,
