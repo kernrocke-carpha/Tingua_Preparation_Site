@@ -2,7 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, Alignment
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import carphaLogo from "@/assets/carpha-logo.png";
-import { STEPS, type FileAttachment, type InjectEntry, type RosterEntry, type Step } from "./tingua-steps";
+import { STEPS, type FileAttachment, type InjectEntry, type RosterEntry, type Step, type HazardSelection, type NamedListEntry } from "./tingua-steps";
 
 export type PlanState = Record<number, Record<string, unknown>>;
 
