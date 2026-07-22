@@ -18,6 +18,17 @@ export type RosterEntry = {
   email: string;
 };
 
+export type HazardSelection = {
+  option: string;
+  name: string;
+};
+
+export type NamedListEntry = {
+  id: string;
+  title: string;
+  description: string;
+};
+
 export type StepField =
   | {
       key: string;
@@ -26,6 +37,7 @@ export type StepField =
       placeholder?: string;
       options?: string[];
       hint?: string;
+      autofillFrom?: { step: number; key: string };
     }
   | {
       key: string;
@@ -33,6 +45,14 @@ export type StepField =
       type: "multiselect" | "checklist";
       options: string[];
       hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "hazards";
+      options: string[];
+      hint?: string;
+      namePlaceholder?: string;
     }
   | {
       key: string;
@@ -46,6 +66,15 @@ export type StepField =
       label: string;
       type: "injects" | "roster";
       hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "namedList";
+      hint?: string;
+      titlePlaceholder?: string;
+      descriptionPlaceholder?: string;
+      addLabel?: string;
     };
 
 export type Step = {
@@ -102,15 +131,19 @@ export const STEPS: Step[] = [
       { key: "venue", label: "Venue", type: "text", placeholder: "National EOC, Port Tingua" },
       {
         key: "natural",
-        label: "Natural Disaster Hazard",
-        type: "select",
+        label: "Natural Disaster Hazard(s)",
+        type: "hazards",
         options: ["Hurricane", "Flooding", "Volcanic eruption", "Earthquake", "Landslide", "Drought", "Wildfire", "Severe weather"],
+        namePlaceholder: "Name this hazard (e.g. Hurricane Selene)",
+        hint: "Tap each hazard that applies, then name it as it will appear in the scenario.",
       },
       {
         key: "medical",
-        label: "Medical Outbreak Hazard",
-        type: "select",
+        label: "Medical Outbreak Hazard(s)",
+        type: "hazards",
         options: ["Communicable disease", "Zoonotic event", "Foodborne illness", "Vector-borne disease", "Chemical exposure", "Emerging pathogen"],
+        namePlaceholder: "Name this outbreak (e.g. Dengue serotype 2)",
+        hint: "Tap each outbreak that applies, then name the pathogen or event.",
       },
       { key: "scenario", label: "Scenario Summary", type: "textarea", placeholder: "One paragraph describing the compound emergency…" },
       { key: "participants", label: "Target Participants", type: "textarea", placeholder: "Ministry of Health, NDMO, laboratories, veterinary services…" },
@@ -132,7 +165,14 @@ export const STEPS: Step[] = [
     ],
     fields: [
       { key: "groups", label: "Number of Groups", type: "number", placeholder: "4" },
-      { key: "disciplines", label: "Disciplines represented per group", type: "textarea" },
+      {
+        key: "disciplines",
+        label: "Disciplines represented per group",
+        type: "textarea",
+        placeholder: "Auto-populated from Target Participants in Step 1 — edit as needed.",
+        autofillFrom: { step: 1, key: "participants" },
+        hint: "This mirrors the Target Participants field in Step 1. Edits made here are kept independently.",
+      },
       { key: "roles", label: "Rotating Group Roles", type: "textarea", placeholder: "Chair, rapporteur, SitRep lead, spokesperson…" },
     ],
   },
@@ -174,6 +214,21 @@ export const STEPS: Step[] = [
       { key: "oneHealthActor", label: "One Health / Environmental Actor", type: "text" },
       { key: "media", label: "Risk Communication / Media Actor", type: "text" },
       { key: "rapporteur", label: "Rapporteur / Evaluator", type: "text" },
+      {
+        key: "rolesDoc",
+        label: "Detailed Roles Description Document",
+        type: "files",
+        hint: "Upload a document that expands on each role's responsibilities, decisions and escalation lines.",
+      },
+      {
+        key: "extraRoles",
+        label: "Additional Roles",
+        type: "namedList",
+        titlePlaceholder: "Role title (e.g. Port Health Liaison)",
+        descriptionPlaceholder: "Responsibilities, when they activate, who they report to…",
+        addLabel: "Add another role",
+        hint: "Add any custom roles specific to this exercise.",
+      },
     ],
   },
   {
@@ -195,6 +250,12 @@ export const STEPS: Step[] = [
     ],
     fields: [
       { key: "arch", label: "Scenario Architecture Notes", type: "textarea", placeholder: "Draft the interlocking events, timeline and thresholds." },
+      {
+        key: "agendaDoc",
+        label: "Full Exercise Agenda",
+        type: "files",
+        hint: "Upload the complete three-day agenda document (PDF, DOCX or similar).",
+      },
     ],
   },
   {
@@ -316,6 +377,7 @@ export const STEPS: Step[] = [
           "Expected responses",
           "Escalation pathways",
           "Evaluator checklists",
+          "Facilitator roles",
         ],
       },
     ],

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import heroImg from "@/assets/tingua-hero.jpg";
-import { STEPS, PHASES, type StepField, type FileAttachment, type InjectEntry, type RosterEntry } from "@/lib/tingua-steps";
+import { STEPS, PHASES, type StepField, type FileAttachment, type InjectEntry, type RosterEntry, type HazardSelection, type NamedListEntry } from "@/lib/tingua-steps";
 import {
   buildDocx,
   buildMarkdown,
@@ -78,6 +78,27 @@ function Index() {
     }
     setCompleted(c);
   }, [state, ready]);
+
+  // Auto-populate fields declared with `autofillFrom` when they are still empty.
+  useEffect(() => {
+    if (!ready) return;
+    for (const s of STEPS) {
+      for (const f of s.fields ?? []) {
+        if ("autofillFrom" in f && f.autofillFrom) {
+          const current = state[s.id]?.[f.key];
+          const source = state[f.autofillFrom.step]?.[f.autofillFrom.key];
+          if (
+            (current == null || (typeof current === "string" && current.trim() === "")) &&
+            typeof source === "string" &&
+            source.trim() !== ""
+          ) {
+            set(s.id, f.key, source);
+          }
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state[1]?.participants, ready]);
 
   const totalFillable = STEPS.filter((s) => s.fields?.length).length;
   const progress = Math.round((completed.size / totalFillable) * 100);
@@ -467,7 +488,9 @@ function FieldRenderer({
     field.type === "checklist" ||
     field.type === "files" ||
     field.type === "injects" ||
-    field.type === "roster";
+    field.type === "roster" ||
+    field.type === "hazards" ||
+    field.type === "namedList";
 
   const inputClass =
     "w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition";
@@ -536,6 +559,25 @@ function FieldRenderer({
       return wrap(<InjectsField value={Array.isArray(value) ? (value as InjectEntry[]) : []} onChange={onChange} />);
     case "roster":
       return wrap(<RosterField value={Array.isArray(value) ? (value as RosterEntry[]) : []} onChange={onChange} />);
+    case "hazards":
+      return wrap(
+        <HazardsField
+          value={Array.isArray(value) ? (value as HazardSelection[]) : []}
+          options={field.options}
+          onChange={onChange}
+          namePlaceholder={field.namePlaceholder}
+        />
+      );
+    case "namedList":
+      return wrap(
+        <NamedListField
+          value={Array.isArray(value) ? (value as NamedListEntry[]) : []}
+          onChange={onChange}
+          titlePlaceholder={field.titlePlaceholder}
+          descriptionPlaceholder={field.descriptionPlaceholder}
+          addLabel={field.addLabel}
+        />
+      );
   }
 }
 
@@ -838,6 +880,136 @@ function RosterField({ value, onChange }: { value: RosterEntry[]; onChange: (v: 
         className="text-xs rounded-full border border-dashed border-primary/50 text-primary px-3 py-1.5 hover:bg-primary/5"
       >
         ＋ Add team member
+      </button>
+    </div>
+  );
+}
+
+function HazardsField({
+  value,
+  options,
+  onChange,
+  namePlaceholder,
+}: {
+  value: HazardSelection[];
+  options: string[];
+  onChange: (v: HazardSelection[]) => void;
+  namePlaceholder?: string;
+}) {
+  const toggle = (opt: string) => {
+    const exists = value.find((v) => v.option === opt);
+    if (exists) onChange(value.filter((v) => v.option !== opt));
+    else onChange([...value, { option: opt, name: "" }]);
+  };
+  const setName = (opt: string, name: string) =>
+    onChange(value.map((v) => (v.option === opt ? { ...v, name } : v)));
+
+  const inputClass =
+    "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => {
+          const on = !!value.find((v) => v.option === opt);
+          return (
+            <button
+              type="button"
+              key={opt}
+              onClick={() => toggle(opt)}
+              className={`text-xs rounded-full border px-3 py-1.5 transition ${
+                on
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border bg-background hover:bg-muted text-foreground/80"
+              }`}
+            >
+              {on ? "✓ " : ""}
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {value.length > 0 && (
+        <div className="space-y-2">
+          {value.map((h) => (
+            <div key={h.option} className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-2 items-center">
+              <div className="text-xs font-medium text-foreground/80">{h.option}</div>
+              <input
+                value={h.name}
+                onChange={(e) => setName(h.option, e.target.value)}
+                placeholder={namePlaceholder ?? "Name this hazard"}
+                className={inputClass}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NamedListField({
+  value,
+  onChange,
+  titlePlaceholder,
+  descriptionPlaceholder,
+  addLabel,
+}: {
+  value: NamedListEntry[];
+  onChange: (v: NamedListEntry[]) => void;
+  titlePlaceholder?: string;
+  descriptionPlaceholder?: string;
+  addLabel?: string;
+}) {
+  const add = () =>
+    onChange([
+      ...value,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: "", description: "" },
+    ]);
+  const update = (id: string, patch: Partial<NamedListEntry>) =>
+    onChange(value.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const remove = (id: string) => onChange(value.filter((r) => r.id !== id));
+
+  const inputClass =
+    "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary";
+
+  return (
+    <div className="space-y-3">
+      {value.length === 0 && (
+        <div className="text-xs text-muted-foreground italic">Nothing added yet.</div>
+      )}
+      {value.map((r) => (
+        <div key={r.id} className="rounded-lg border border-border p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <input
+              value={r.title}
+              onChange={(e) => update(r.id, { title: e.target.value })}
+              placeholder={titlePlaceholder ?? "Title"}
+              className={inputClass}
+            />
+            <button
+              type="button"
+              onClick={() => remove(r.id)}
+              className="text-xs rounded-md border border-border px-2 py-1 hover:bg-muted text-muted-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <textarea
+            rows={3}
+            value={r.description}
+            onChange={(e) => update(r.id, { description: e.target.value })}
+            placeholder={descriptionPlaceholder ?? "Description"}
+            className={inputClass}
+          />
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={add}
+        className="text-xs rounded-full border border-dashed border-primary/50 text-primary px-3 py-1.5 hover:bg-primary/5"
+      >
+        ＋ {addLabel ?? "Add"}
       </button>
     </div>
   );

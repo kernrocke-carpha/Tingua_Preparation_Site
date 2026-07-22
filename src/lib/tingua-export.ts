@@ -2,7 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, Alignment
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import carphaLogo from "@/assets/carpha-logo.png";
-import { STEPS, type FileAttachment, type InjectEntry, type RosterEntry, type Step } from "./tingua-steps";
+import { STEPS, type FileAttachment, type InjectEntry, type RosterEntry, type Step, type HazardSelection, type NamedListEntry } from "./tingua-steps";
 
 export type PlanState = Record<number, Record<string, unknown>>;
 
@@ -69,6 +69,18 @@ export function buildMarkdown(state: PlanState): string {
       } else if (f.type === "multiselect" || f.type === "checklist") {
         const arr = asArray<string>(v);
         if (arr.length) lines.push(`- **${f.label}:** ${arr.join(", ")}`);
+      } else if (f.type === "hazards") {
+        const arr = asArray<HazardSelection>(v);
+        if (arr.length) {
+          lines.push(`- **${f.label}:**`);
+          for (const h of arr) lines.push(`  - ${h.option}${h.name ? ` — ${h.name}` : ""}`);
+        }
+      } else if (f.type === "namedList") {
+        const arr = asArray<NamedListEntry>(v);
+        if (arr.length) {
+          lines.push(`- **${f.label}:**`);
+          for (const r of arr) lines.push(`  - ${r.title || "(untitled)"}${r.description ? ` — ${r.description}` : ""}`);
+        }
       } else if (f.type === "injects") {
         const arr = asArray<InjectEntry>(v);
         if (arr.length) {
@@ -185,6 +197,23 @@ function stepChildren(step: Step, state: PlanState): (Paragraph | Table)[] {
       if (arr.length) {
         out.push(p(f.label, { bold: true, color: TEAL }));
         for (const item of arr) out.push(new Paragraph({ text: item, bullet: { level: 0 } }));
+      }
+    } else if (f.type === "hazards") {
+      const arr = asArray<HazardSelection>(v);
+      if (arr.length) {
+        out.push(p(f.label, { bold: true, color: TEAL }));
+        for (const h of arr) {
+          out.push(new Paragraph({ text: `${h.option}${h.name ? ` — ${h.name}` : ""}`, bullet: { level: 0 } }));
+        }
+      }
+    } else if (f.type === "namedList") {
+      const arr = asArray<NamedListEntry>(v);
+      if (arr.length) {
+        out.push(p(f.label, { bold: true, color: TEAL }));
+        for (const r of arr) {
+          out.push(p(`• ${r.title || "(untitled)"}`, { bold: true }));
+          if (r.description) out.push(p(r.description));
+        }
       }
     } else if (f.type === "injects") {
       const arr = asArray<InjectEntry>(v);
@@ -371,6 +400,16 @@ export async function buildZip(state: PlanState): Promise<Blob> {
   const sitrepFiles = asArray<FileAttachment>(get(state, 11, "sitrepTemplate"));
   for (const f of sitrepFiles) {
     zip.file(`sitrep/${f.name}`, dataUrlToUint8(f.dataUrl));
+  }
+
+  const rolesDoc = asArray<FileAttachment>(get(state, 4, "rolesDoc"));
+  for (const f of rolesDoc) {
+    zip.file(`roles/${f.name}`, dataUrlToUint8(f.dataUrl));
+  }
+
+  const agendaDoc = asArray<FileAttachment>(get(state, 5, "agendaDoc"));
+  for (const f of agendaDoc) {
+    zip.file(`agenda/${f.name}`, dataUrlToUint8(f.dataUrl));
   }
 
   return zip.generateAsync({ type: "blob" });
