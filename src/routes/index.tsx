@@ -488,7 +488,9 @@ function FieldRenderer({
     field.type === "checklist" ||
     field.type === "files" ||
     field.type === "injects" ||
-    field.type === "roster";
+    field.type === "roster" ||
+    field.type === "hazards" ||
+    field.type === "namedList";
 
   const inputClass =
     "w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition";
