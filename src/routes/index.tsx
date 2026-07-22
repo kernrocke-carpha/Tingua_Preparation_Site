@@ -559,6 +559,25 @@ function FieldRenderer({
       return wrap(<InjectsField value={Array.isArray(value) ? (value as InjectEntry[]) : []} onChange={onChange} />);
     case "roster":
       return wrap(<RosterField value={Array.isArray(value) ? (value as RosterEntry[]) : []} onChange={onChange} />);
+    case "hazards":
+      return wrap(
+        <HazardsField
+          value={Array.isArray(value) ? (value as HazardSelection[]) : []}
+          options={field.options}
+          onChange={onChange}
+          namePlaceholder={field.namePlaceholder}
+        />
+      );
+    case "namedList":
+      return wrap(
+        <NamedListField
+          value={Array.isArray(value) ? (value as NamedListEntry[]) : []}
+          onChange={onChange}
+          titlePlaceholder={field.titlePlaceholder}
+          descriptionPlaceholder={field.descriptionPlaceholder}
+          addLabel={field.addLabel}
+        />
+      );
   }
 }
 
