@@ -377,6 +377,7 @@ export const STEPS: Step[] = [
           "Expected responses",
           "Escalation pathways",
           "Evaluator checklists",
+          "Facilitator roles",
         ],
       },
     ],
