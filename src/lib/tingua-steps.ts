@@ -18,6 +18,17 @@ export type RosterEntry = {
   email: string;
 };
 
+export type HazardSelection = {
+  option: string;
+  name: string;
+};
+
+export type NamedListEntry = {
+  id: string;
+  title: string;
+  description: string;
+};
+
 export type StepField =
   | {
       key: string;
@@ -26,6 +37,7 @@ export type StepField =
       placeholder?: string;
       options?: string[];
       hint?: string;
+      autofillFrom?: { step: number; key: string };
     }
   | {
       key: string;
@@ -33,6 +45,14 @@ export type StepField =
       type: "multiselect" | "checklist";
       options: string[];
       hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "hazards";
+      options: string[];
+      hint?: string;
+      namePlaceholder?: string;
     }
   | {
       key: string;
@@ -46,6 +66,15 @@ export type StepField =
       label: string;
       type: "injects" | "roster";
       hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "namedList";
+      hint?: string;
+      titlePlaceholder?: string;
+      descriptionPlaceholder?: string;
+      addLabel?: string;
     };
 
 export type Step = {
