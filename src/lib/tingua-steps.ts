@@ -165,7 +165,14 @@ export const STEPS: Step[] = [
     ],
     fields: [
       { key: "groups", label: "Number of Groups", type: "number", placeholder: "4" },
-      { key: "disciplines", label: "Disciplines represented per group", type: "textarea" },
+      {
+        key: "disciplines",
+        label: "Disciplines represented per group",
+        type: "textarea",
+        placeholder: "Auto-populated from Target Participants in Step 1 — edit as needed.",
+        autofillFrom: { step: 1, key: "participants" },
+        hint: "This mirrors the Target Participants field in Step 1. Edits made here are kept independently.",
+      },
       { key: "roles", label: "Rotating Group Roles", type: "textarea", placeholder: "Chair, rapporteur, SitRep lead, spokesperson…" },
     ],
   },
