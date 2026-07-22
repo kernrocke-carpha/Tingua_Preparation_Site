@@ -69,6 +69,18 @@ export function buildMarkdown(state: PlanState): string {
       } else if (f.type === "multiselect" || f.type === "checklist") {
         const arr = asArray<string>(v);
         if (arr.length) lines.push(`- **${f.label}:** ${arr.join(", ")}`);
+      } else if (f.type === "hazards") {
+        const arr = asArray<HazardSelection>(v);
+        if (arr.length) {
+          lines.push(`- **${f.label}:**`);
+          for (const h of arr) lines.push(`  - ${h.option}${h.name ? ` — ${h.name}` : ""}`);
+        }
+      } else if (f.type === "namedList") {
+        const arr = asArray<NamedListEntry>(v);
+        if (arr.length) {
+          lines.push(`- **${f.label}:**`);
+          for (const r of arr) lines.push(`  - ${r.title || "(untitled)"}${r.description ? ` — ${r.description}` : ""}`);
+        }
       } else if (f.type === "injects") {
         const arr = asArray<InjectEntry>(v);
         if (arr.length) {
