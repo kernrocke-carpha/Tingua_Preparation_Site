@@ -250,6 +250,12 @@ export const STEPS: Step[] = [
     ],
     fields: [
       { key: "arch", label: "Scenario Architecture Notes", type: "textarea", placeholder: "Draft the interlocking events, timeline and thresholds." },
+      {
+        key: "agendaDoc",
+        label: "Full Exercise Agenda",
+        type: "files",
+        hint: "Upload the complete three-day agenda document (PDF, DOCX or similar).",
+      },
     ],
   },
   {
