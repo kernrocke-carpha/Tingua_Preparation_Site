@@ -402,6 +402,16 @@ export async function buildZip(state: PlanState): Promise<Blob> {
     zip.file(`sitrep/${f.name}`, dataUrlToUint8(f.dataUrl));
   }
 
+  const rolesDoc = asArray<FileAttachment>(get(state, 4, "rolesDoc"));
+  for (const f of rolesDoc) {
+    zip.file(`roles/${f.name}`, dataUrlToUint8(f.dataUrl));
+  }
+
+  const agendaDoc = asArray<FileAttachment>(get(state, 5, "agendaDoc"));
+  for (const f of agendaDoc) {
+    zip.file(`agenda/${f.name}`, dataUrlToUint8(f.dataUrl));
+  }
+
   return zip.generateAsync({ type: "blob" });
 }
 
