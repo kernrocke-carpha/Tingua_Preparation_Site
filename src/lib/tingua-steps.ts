@@ -214,6 +214,21 @@ export const STEPS: Step[] = [
       { key: "oneHealthActor", label: "One Health / Environmental Actor", type: "text" },
       { key: "media", label: "Risk Communication / Media Actor", type: "text" },
       { key: "rapporteur", label: "Rapporteur / Evaluator", type: "text" },
+      {
+        key: "rolesDoc",
+        label: "Detailed Roles Description Document",
+        type: "files",
+        hint: "Upload a document that expands on each role's responsibilities, decisions and escalation lines.",
+      },
+      {
+        key: "extraRoles",
+        label: "Additional Roles",
+        type: "namedList",
+        titlePlaceholder: "Role title (e.g. Port Health Liaison)",
+        descriptionPlaceholder: "Responsibilities, when they activate, who they report to…",
+        addLabel: "Add another role",
+        hint: "Add any custom roles specific to this exercise.",
+      },
     ],
   },
   {
